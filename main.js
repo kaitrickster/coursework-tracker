@@ -41,6 +41,7 @@ const firebaseConfig = {
   measurementId: "G-GQM56YNRFB"
 };
 
+// Initialize Firebase with explicit domain
 const firebaseApp = initializeApp(firebaseConfig);
 const db = getFirestore(firebaseApp);
 
