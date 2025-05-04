@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Degree Tracker</title>
+  <!-- Element Plus CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/element-plus@2.3.8/dist/index.css">
+  <link rel="stylesheet" href="style.css">
+  <!-- <link rel="stylesheet" href="theme.css"> -->
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/vue/3.2.31/vue.global.js"></script>
+  <!-- Element Plus JS -->
+  <script src="https://unpkg.com/element-plus@2.3.8"></script>
+  <script src="https://unpkg.com/@element-plus/icons-vue"></script>
+  <script type="module" src="main.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+</head>
+<body>
+  <h1>Degree Tracker</h1>
+  <div id="app" class="container">
+    <nav class="main-nav">
+      <div class="nav-content">
+        <el-button-group>
+          <el-button 
+            type="primary" 
+            :type="currentView === 'current-semester' ? 'primary' : 'default'"
+            @click="currentView = 'current-semester'"
+            :class="{active: currentView === 'current-semester'}"
+          >
+            Current Semester
+          </el-button>
+          <el-button 
+            :type="currentView === 'degree-progress' ? 'primary' : 'default'"
+            @click="currentView = 'degree-progress'"
+            :class="{active: currentView === 'degree-progress'}"
+          >
+            Degree Progress
+          </el-button>
+        </el-button-group>
+      </div>
+    </nav>
+
+    <!-- Current Semester View -->
+    <div v-if="currentView === 'current-semester'">
+      <el-card class="section">
+        <template #header>
+          <div class="card-header">
+            <h2>Courses</h2>
+            <el-button type="warning" @click="showEndSemesterDialog = true">End Semester</el-button>
+          </div>
+        </template>
+        <el-table :data="courses.filter(c => c.status === 'inProgress')" style="width: 100%">
+          <el-table-column label="" width="120">
+            <template #default="scope">
+              <el-button type="success" size="small" @click="completeCourse(scope.row.id)">Complete</el-button>
+            </template>
+          </el-table-column>
+          <el-table-column prop="name" label="Course Title"></el-table-column>
+          <el-table-column prop="code" label="Code"></el-table-column>
+          <el-table-column prop="instructor" label="Instructor"></el-table-column>
+          <el-table-column prop="status" label="Status">
+            <template #default="scope">
+              <el-tag v-if="scope.row.status === 'inProgress'" type="info">In Progress</el-tag>
+              <el-tag v-else-if="scope.row.status === 'completed'" type="success">Completed</el-tag>
+              <el-tag v-else>{{ scope.row.status }}</el-tag>
+            </template>
+          </el-table-column>
+        </el-table>
+      </el-card>
+
+      <div class="form-row">
+        <el-card class="section form-half">
+          <template #header>
+            <div class="card-header">
+              <h2>Add a New Course</h2>
+            </div>
+          </template>
+          <el-form :model="newCourse" label-width="120px" inline>
+            <el-form-item label="Course">
+              <el-select v-model="newCourse.code" placeholder="Select a course" @change="handleCourseSelect" clearable>
+                <el-option-group
+                  v-if="requirements?.core"
+                  label="Core Requirements"
+                >
+                  <el-option
+                    v-for="course in requirements.core.courses"
+                    :key="course.code"
+                    :label="course.name || course.code"
+                    :value="course.code"
+                    :disabled="courses.some(c => c.code === course.code)"
+                  >
+                    <span>{{ course.name || course.code }}</span>
+                    <span style="float: right; color: #8492a6; font-size: 13px">{{ course.code }}</span>
+                  </el-option>
+                </el-option-group>
+
+                <el-option-group
+                  v-if="requirements?.breadth"
+                  label="Breadth Requirements"
+                >
+                  <el-option
+                    v-for="course in requirements.breadth.courses"
+                    :key="course.code"
+                    :label="course.name || course.code"
+                    :value="course.code"
+                    :disabled="courses.some(c => c.code === course.code)"
+                  >
+                    <span>{{ course.name || course.code }}</span>
+                    <span style="float: right; color: #8492a6; font-size: 13px">{{ course.code }}</span>
+                  </el-option>
+                </el-option-group>
+
+                <el-option-group
+                  v-if="requirements?.foundational"
+                  v-for="area in requirements.foundational.areas"
+                  :key="area.name"
+                  :label="area.name"
+                >
+                  <el-option
+                    v-for="course in area.courses"
+                    :key="course.code"
+                    :label="course.name || course.code"
+                    :value="course.code"
+                    :disabled="courses.some(c => c.code === course.code)"
+                  >
+                    <span>{{ course.name || course.code }}</span>
+                    <span style="float: right; color: #8492a6; font-size: 13px">{{ course.code }}</span>
+                  </el-option>
+                </el-option-group>
+
+                <el-option-group
+                  v-if="requirements?.additional"
+                  label="Additional Requirements"
+                >
+                  <el-option
+                    v-for="course in requirements.additional.courses"
+                    :key="course.code"
+                    :label="course.name || course.code"
+                    :value="course.code"
+                    :disabled="courses.some(c => c.code === course.code)"
+                  >
+                    <span>{{ course.name || course.code }}</span>
+                    <span style="float: right; color: #8492a6; font-size: 13px">{{ course.code }}</span>
+                  </el-option>
+                </el-option-group>
+              </el-select>
+            </el-form-item>
+            <el-form-item label="Instructor">
+              <el-input v-model="newCourse.instructor" placeholder="Instructor name"></el-input>
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" @click="addCourse">Add Course</el-button>
+            </el-form-item>
+          </el-form>
+        </el-card>
+
+        <el-card class="section form-half">
+          <template #header>
+            <div class="card-header">
+              <h2>Add a Task</h2>
+            </div>
+          </template>
+          <el-form :model="newTask" label-width="120px" inline>
+            <el-form-item label="Select Course">
+              <el-select v-model="newTask.courseCode" placeholder="Select a course" clearable>
+                <el-option
+                  v-for="course in courses.filter(c => c.status === 'inProgress')"
+                  :key="course.id"
+                  :label="course.code"
+                  :value="course.code"
+                ></el-option>
+              </el-select>
+            </el-form-item>
+            <el-form-item label="Task Type">
+              <el-select v-model="newTask.type" placeholder="Select type">
+                <el-option label="Weekly" value="weekly"></el-option>
+                <el-option label="Project" value="project"></el-option>
+              </el-select>
+            </el-form-item>
+            <template v-if="newTask.type === 'weekly'">
+              <el-form-item label="Day of Week">
+                <el-select v-model="newTask.dayOfWeek">
+                  <el-option v-for="day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']"
+                    :key="day"
+                    :label="day"
+                    :value="day">
+                  </el-option>
+                </el-select>
+              </el-form-item>
+              <el-form-item label="Task Name">
+                <el-input v-model="newTask.taskName" placeholder="e.g. Homework"></el-input>
+              </el-form-item>
+            </template>
+            <template v-if="newTask.type === 'project'">
+              <el-form-item label="Deadline">
+                <el-date-picker v-model="newTask.due" type="date" placeholder="Select date"></el-date-picker>
+              </el-form-item>
+              <el-form-item label="Task Name">
+                <el-input v-model="newTask.taskName" placeholder="e.g. Final Project"></el-input>
+              </el-form-item>
+            </template>
+            <el-form-item>
+              <el-button type="primary" @click="addTask">Add Task</el-button>
+            </el-form-item>
+          </el-form>
+        </el-card>
+      </div>
+
+      <div class="task-display">
+        <el-card class="task-column">
+          <template #header>
+            <div class="card-header">
+              <h2>Weekly Tasks</h2>
+            </div>
+          </template>
+          <div class="table-scroll">
+            <el-table :data="weeklyTasksSorted" style="width: 100%">
+              <el-table-column width="60">
+                <template #default="scope">
+                  <el-checkbox v-model="scope.row.completed" @change="toggleTaskCompletion(scope.row)"></el-checkbox>
+                </template>
+              </el-table-column>
+              <el-table-column label="Course" width="120">
+                <template #default="scope">
+                  <el-tag size="small">{{ scope.row.courseCode }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="Day" width="120">
+                <template #default="scope">
+                  <span>{{ scope.row.dayOfWeek }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="Task">
+                <template #default="scope">
+                  <span :class="{ 'completed-task': scope.row.completed }">
+                    {{ scope.row.taskName }}
+                  </span>
+                </template>
+              </el-table-column>
+              <el-table-column width="120">
+                <template #default="scope">
+                  <el-button type="danger" size="small" @click="deleteTask(scope.row.id)">Delete</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+        </el-card>
+
+        <el-card class="task-column">
+          <template #header>
+            <div class="card-header">
+              <h2>Project Tasks</h2>
+            </div>
+          </template>
+          <div class="table-scroll">
+            <el-table :data="projectTasksSorted" style="width: 100%">
+              <el-table-column width="60">
+                <template #default="scope">
+                  <el-checkbox v-model="scope.row.completed" @change="toggleTaskCompletion(scope.row)"></el-checkbox>
+                </template>
+              </el-table-column>
+              <el-table-column label="Course" width="120">
+                <template #default="scope">
+                  <el-tag size="small">{{ scope.row.courseCode }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="Due" width="140">
+                <template #default="scope">
+                  <span>{{ formatDue(scope.row.due) }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="Task">
+                <template #default="scope">
+                  <span :class="{ 'completed-task': scope.row.completed }">
+                    {{ scope.row.taskName }}
+                  </span>
+                </template>
+              </el-table-column>
+              <el-table-column width="120">
+                <template #default="scope">
+                  <el-button type="danger" size="small" @click="deleteTask(scope.row.id)">Delete</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+        </el-card>
+      </div>
+    </div>
+
+    <!-- Degree Progress View -->
+    <div v-show="currentView === 'degree-progress'">
+      <div class="jira-board">
+        <div class="jira-column">
+          <div class="jira-column-header">TODO</div>
+          <div class="jira-cards" ref="todoCards">
+            <div v-for="course in todoFlattenedCourses" :key="course.code" class="jira-card">
+              <div class="jira-card-title">{{ course.name || course.code }}</div>
+              <div class="jira-card-code">{{ course.code }}</div>
+            </div>
+          </div>
+        </div>
+        <div class="jira-column">
+          <div class="jira-column-header">In Progress</div>
+          <div class="jira-cards" ref="inProgressCards">
+            <div v-for="course in courses.filter(c => c.status === 'inProgress')" :key="course.id" class="jira-card" :data-id="course.id">
+              <div class="jira-card-title">{{ course.name }}</div>
+              <div class="jira-card-code">{{ course.code }}</div>
+              <div class="jira-card-instructor">{{ course.instructor }}</div>
+            </div>
+          </div>
+        </div>
+        <div class="jira-column">
+          <div class="jira-column-header">Done</div>
+          <div class="jira-cards" ref="doneCards">
+            <div v-for="course in courses.filter(c => c.status === 'completed')" :key="course.id" class="jira-card" :data-id="course.id">
+              <div class="jira-card-title">{{ course.name }}</div>
+              <div class="jira-card-code">{{ course.code }}</div>
+              <div class="jira-card-instructor">{{ course.instructor }}</div>
+            </div>
+          </div>
+        </div>
+        <div class="jira-column trash-column">
+          <div class="jira-column-header">
+            <el-icon><el-icon-delete /></el-icon>
+            Deleted 🗑️
+          </div>
+          <div class="jira-cards" ref="trashCards">
+            <!-- No cards shown here, just for dropping -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- End Semester Dialog -->
+    <el-dialog
+      v-model="showEndSemesterDialog"
+      title="End Semester"
+      width="30%"
+      :close-on-click-modal="false"
+    >
+      <p>This will move all current courses to Done in Degree Progress page, and remove all tasks associated with them.</p>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="showEndSemesterDialog = false">Cancel</el-button>
+          <el-button type="warning" @click="endSemester">OK</el-button>
+        </span>
+      </template>
+    </el-dialog>
+  </div>
+</body>
+</html>
+
