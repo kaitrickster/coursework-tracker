@@ -46,16 +46,11 @@
       <el-card class="section">
         <template #header>
           <div class="card-header">
-            <h2>Courses</h2>
+      <h2>Courses</h2>
             <el-button type="warning" @click="showEndSemesterDialog = true">End Semester</el-button>
           </div>
         </template>
         <el-table :data="courses.filter(c => c.status === 'inProgress')" style="width: 100%">
-          <el-table-column label="" width="120">
-            <template #default="scope">
-              <el-button type="success" size="small" @click="completeCourse(scope.row.id)">Complete</el-button>
-            </template>
-          </el-table-column>
           <el-table-column prop="name" label="Course Title"></el-table-column>
           <el-table-column prop="code" label="Code"></el-table-column>
           <el-table-column prop="instructor" label="Instructor"></el-table-column>
@@ -66,6 +61,14 @@
               <el-tag v-else>{{ scope.row.status }}</el-tag>
             </template>
           </el-table-column>
+          <el-table-column label="" width="180" align="right">
+            <template #default="scope">
+              <div style="display: flex; gap: 8px; justify-content: flex-end; align-items: center;">
+                <el-button type="success" size="small" @click="completeCourse(scope.row.id)">Complete</el-button>
+                <el-button type="danger" size="small" @click="deleteCourse(scope.row.id)">Delete</el-button>
+              </div>
+            </template>
+          </el-table-column>
         </el-table>
       </el-card>
 
@@ -73,7 +76,7 @@
         <el-card class="section form-half">
           <template #header>
             <div class="card-header">
-              <h2>Add a New Course</h2>
+      <h2>Add a New Course</h2>
             </div>
           </template>
           <el-form :model="newCourse" label-width="120px" inline>
@@ -88,7 +91,7 @@
                     :key="course.code"
                     :label="course.name || course.code"
                     :value="course.code"
-                    :disabled="courses.some(c => c.code === course.code)"
+                    :disabled="isElectiveSatisfied(course.code) || courses.some(c => c.code === course.code)"
                   >
                     <span>{{ course.name || course.code }}</span>
                     <span style="float: right; color: #8492a6; font-size: 13px">{{ course.code }}</span>
@@ -104,7 +107,7 @@
                     :key="course.code"
                     :label="course.name || course.code"
                     :value="course.code"
-                    :disabled="courses.some(c => c.code === course.code)"
+                    :disabled="isElectiveSatisfied(course.code) || courses.some(c => c.code === course.code)"
                   >
                     <span>{{ course.name || course.code }}</span>
                     <span style="float: right; color: #8492a6; font-size: 13px">{{ course.code }}</span>
@@ -122,7 +125,7 @@
                     :key="course.code"
                     :label="course.name || course.code"
                     :value="course.code"
-                    :disabled="courses.some(c => c.code === course.code)"
+                    :disabled="isElectiveSatisfied(course.code) || courses.some(c => c.code === course.code)"
                   >
                     <span>{{ course.name || course.code }}</span>
                     <span style="float: right; color: #8492a6; font-size: 13px">{{ course.code }}</span>
@@ -138,7 +141,7 @@
                     :key="course.code"
                     :label="course.name || course.code"
                     :value="course.code"
-                    :disabled="courses.some(c => c.code === course.code)"
+                    :disabled="isElectiveSatisfied(course.code) || courses.some(c => c.code === course.code)"
                   >
                     <span>{{ course.name || course.code }}</span>
                     <span style="float: right; color: #8492a6; font-size: 13px">{{ course.code }}</span>
@@ -146,9 +149,22 @@
                 </el-option-group>
               </el-select>
             </el-form-item>
-            <el-form-item label="Instructor">
-              <el-input v-model="newCourse.instructor" placeholder="Instructor name"></el-input>
-            </el-form-item>
+            <template v-if="isPlaceholderElective(newCourse.code)">
+              <el-form-item label="Code">
+                <el-input v-model="newCourse.realCode" placeholder="e.g. MSTU 4020"></el-input>
+              </el-form-item>
+              <el-form-item label="Name">
+                <el-input v-model="newCourse.realName" placeholder="e.g. Social and Communicative Aspects of the Internet"></el-input>
+              </el-form-item>
+              <el-form-item label="Instructor">
+                <el-input v-model="newCourse.instructor" placeholder="Instructor name"></el-input>
+              </el-form-item>
+            </template>
+            <template v-else>
+              <el-form-item label="Instructor">
+                <el-input v-model="newCourse.instructor" placeholder="Instructor name"></el-input>
+              </el-form-item>
+            </template>
             <el-form-item>
               <el-button type="primary" @click="addCourse">Add Course</el-button>
             </el-form-item>
@@ -289,10 +305,90 @@
     </div>
 
     <!-- Degree Progress View -->
-    <div v-show="currentView === 'degree-progress'">
+    <div v-show="currentView === 'degree-progress'" class="degree-progress">
+      <h2>Degree Progress</h2>
+      
+      <!-- Requirements Section -->
+      <div class="requirements-section">
+        <div v-for="(req, type) in requirements" :key="type" :class="['requirement-card', { foundational: type === 'foundational' }]">
+          <div class="requirement-header">
+            <h3>
+              <el-icon v-if="type === 'core'"><el-icon-star /></el-icon>
+              <el-icon v-else-if="type === 'foundational'"><el-icon-collection /></el-icon>
+              <el-icon v-else-if="type === 'breadth'"><el-icon-expand /></el-icon>
+              <el-icon v-else><el-icon-plus /></el-icon>
+              {{ type.charAt(0).toUpperCase() + type.slice(1) }} Requirements
+            </h3>
+            <el-tag :type="isRequirementSatisfied(type) ? 'success' : 'danger'" size="large" effect="light">
+              <el-icon v-if="isRequirementSatisfied(type)"><Check /></el-icon>
+              <el-icon v-else><Close /></el-icon>
+              {{ isRequirementSatisfied(type) ? 'Satisfied' : 'Not Satisfied' }}
+            </el-tag>
+          </div>
+          
+          <div class="requirement-description" v-if="!isRequirementSatisfied(type)">
+            <el-icon><el-icon-info /></el-icon>
+            <p>{{ getRequirementDescription(type) }}</p>
+          </div>
+
+          <div class="requirement-courses">
+            <div v-if="type === 'foundational'" class="foundational-areas">
+              <div v-for="area in req.areas" :key="area.name" class="area-section">
+                <h4>
+                  <el-icon><el-icon-folder /></el-icon>
+                  {{ area.name }}
+                </h4>
+                <div class="course-list">
+                  <div v-for="course in area.courses" :key="course.code" 
+                       :class="['course-item', { 'completed': isCourseCompleted(course.code), 'in-progress': isCourseInProgress(course.code) }]">
+                    <div class="course-info">
+                      <span class="course-code">{{ course.code }}</span>
+                      <span class="course-name">{{ course.name || course }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+        </div>
+
+            <div v-else class="course-list">
+              <div v-for="course in req.courses" :key="course.code"
+                :class="[ 'course-item',
+                  isPlaceholderElective(course.code) && getElectiveCourseForRequirement(course.code) ?
+                    { 'completed': isCourseCompleted(getElectiveCourseForRequirement(course.code).code),
+                      'in-progress': isCourseInProgress(getElectiveCourseForRequirement(course.code).code) }
+                    : { 'completed': isCourseCompleted(course.code), 'in-progress': isCourseInProgress(course.code) }
+                ]">
+                <template v-if="isPlaceholderElective(course.code)">
+                  <template v-if="getElectiveCourseForRequirement(course.code)">
+                    <div class="course-info">
+                      <span class="course-code">{{ getElectiveCourseForRequirement(course.code).code }}</span>
+                      <span class="course-name">{{ getElectiveCourseForRequirement(course.code).name }}</span>
+                      <span class="satisfies-note">Satisfies <b>{{ course.code }}</b></span>
+                    </div>
+                  </template>
+                  <template v-else>
+                    <div class="course-info">
+                      <span class="course-code">{{ course.code }}</span>
+                      <span class="course-name">(To be completed)</span>
+                    </div>
+                  </template>
+                </template>
+                <template v-else>
+                  <div class="course-info">
+                    <span class="course-code">{{ course.code }}</span>
+                    <span class="course-name">{{ course.name || course }}</span>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Jira Board -->
       <div class="jira-board">
         <div class="jira-column">
-          <div class="jira-column-header">TODO</div>
+          <div class="jira-column-header">Available Courses</div>
           <div class="jira-cards" ref="todoCards">
             <div v-for="course in todoFlattenedCourses" :key="course.code" class="jira-card">
               <div class="jira-card-title">{{ course.name || course.code }}</div>
@@ -311,7 +407,7 @@
           </div>
         </div>
         <div class="jira-column">
-          <div class="jira-column-header">Done</div>
+          <div class="jira-column-header">Completed</div>
           <div class="jira-cards" ref="doneCards">
             <div v-for="course in courses.filter(c => c.status === 'completed')" :key="course.id" class="jira-card" :data-id="course.id">
               <div class="jira-card-title">{{ course.name }}</div>
@@ -320,17 +416,8 @@
             </div>
           </div>
         </div>
-        <div class="jira-column trash-column">
-          <div class="jira-column-header">
-            <el-icon><el-icon-delete /></el-icon>
-            Deleted 🗑️
-          </div>
-          <div class="jira-cards" ref="trashCards">
-            <!-- No cards shown here, just for dropping -->
-          </div>
-        </div>
       </div>
-    </div>
+      </div>
 
     <!-- End Semester Dialog -->
     <el-dialog

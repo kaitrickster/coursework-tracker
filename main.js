@@ -89,9 +89,22 @@ const app = createApp({
         });
     },
     todoFlattenedCourses() {
-      // Courses in requirements (flattened) that are not in courses with status inProgress or completed
-      const takenCodes = this.courses.filter(c => c.status === 'inProgress' || c.status === 'completed').map(c => c.code);
-      return this.flattenedCourses.filter(c => !takenCodes.includes(c.code));
+      // Loop through all requirements and filter based on satisfaction
+      const takenCodes = this.courses
+        .filter(c => c.status === 'inProgress' || c.status === 'completed')
+        .map(c => c.code);
+      const satisfiedElectives = this.courses
+        .filter(c => c.satisfiesRequirement && (c.status === 'inProgress' || c.status === 'completed'))
+        .map(c => c.satisfiesRequirement);
+      return this.flattenedCourses.filter(c => {
+        if (this.isPlaceholderElective(c.code)) {
+          // Show elective if not satisfied
+          return !satisfiedElectives.includes(c.code);
+        } else {
+          // Show non-elective if not taken
+          return !takenCodes.includes(c.code);
+        }
+        });
     }
   },
   methods: {
@@ -112,15 +125,33 @@ const app = createApp({
         });
       });
     },
+    isPlaceholderElective(code) {
+      // Now matches any code containing 'Elective'
+      return code && code.includes('Elective');
+    },
     async addCourse() {
-      const { code, name, instructor, status } = this.newCourse;
-      if (!code || !name || !instructor) {
+      const { code, name, instructor, status, realCode, realName } = this.newCourse;
+      if (!code || !instructor) {
         ElementPlus.ElMessage.error('Please fill out all course fields!');
         return;
       }
       try {
-        await addDoc(collection(db, "courses"), { code, name, instructor, status });
-        this.newCourse = { code: '', name: '', instructor: '', status: 'inProgress' };
+        if (this.isPlaceholderElective(code)) {
+          if (!realCode || !realName) {
+            ElementPlus.ElMessage.error('Please enter the real course code and name!');
+            return;
+          }
+          await addDoc(collection(db, "courses"), {
+            code: realCode,
+            name: realName,
+            instructor,
+            status,
+            satisfiesRequirement: code
+          });
+        } else {
+          await addDoc(collection(db, "courses"), { code, name, instructor, status });
+        }
+        this.newCourse = { code: '', name: '', instructor: '', status: 'inProgress', realCode: '', realName: '' };
         ElementPlus.ElMessage.success('Course added successfully!');
       } catch (error) {
         ElementPlus.ElMessage.error('Error adding course. Please try again.');
@@ -244,9 +275,7 @@ const app = createApp({
                 if (col.disabled) return;
                 const courseId = evt.item.dataset.id;
                 if (courseId) {
-                  if (col.status === 'trash') {
-                    await this.deleteCourse(courseId);
-                  } else if (col.status === 'completed') {
+                  if (col.status === 'completed') {
                     // When moving to Done, also remove all tasks for this course
                     const course = this.courses.find(c => c.id === courseId);
                     if (course) {
@@ -421,6 +450,59 @@ const app = createApp({
         console.error("Error ending semester:", error);
         ElementPlus.ElMessage.error('Error ending semester. Please try again.');
       }
+    },
+    isRequirementSatisfied(type) {
+      if (!this.requirements || !this.requirements[type]) return false;
+      const satisfiedCourses = this.courses
+        .filter(c => c.status === 'completed' || c.status === 'inProgress')
+        .map(c => c.code);
+      const satisfiedElectives = this.courses
+        .filter(c => c.satisfiesRequirement && (c.status === 'completed' || c.status === 'inProgress'))
+        .map(c => c.satisfiesRequirement);
+
+      if (type === 'foundational') {
+        const satisfiedAreas = new Set();
+        this.requirements[type].areas.forEach(area => {
+          const hasSatisfiedCourse = area.courses.some(course => {
+            const courseCode = typeof course === 'string' ? course : course.code;
+            return satisfiedCourses.includes(courseCode) || satisfiedElectives.includes(courseCode);
+          });
+          if (hasSatisfiedCourse) {
+            satisfiedAreas.add(area.name);
+          }
+        });
+        return satisfiedAreas.size >= 3;
+      } else {
+        const requiredCourses = this.requirements[type].courses.map(course => 
+          typeof course === 'string' ? course : course.code
+        );
+        return requiredCourses.every(course =>
+          satisfiedCourses.includes(course) || satisfiedElectives.includes(course)
+        );
+      }
+    },
+    isCourseCompleted(courseCode) {
+      return this.courses.some(c => c.code.trim() === courseCode.trim() && c.status === 'completed');
+    },
+    isCourseInProgress(courseCode) {
+      return this.courses.some(c => c.code.trim() === courseCode.trim() && c.status === 'inProgress');
+    },
+    getRequirementDescription(type) {
+      const descriptions = {
+        core: "All core courses must be completed to satisfy this requirement.",
+        foundational: "Courses must be completed from at least three different areas to satisfy this requirement.",
+        breadth: "All breadth courses must be completed to satisfy this requirement.",
+        additional: "All additional courses must be completed to satisfy this requirement."
+      };
+      return descriptions[type] || "";
+    },
+    getElectiveCourseForRequirement(requirementCode) {
+      // Find a course in courses collection that satisfies this requirement
+      return this.courses.find(c => c.satisfiesRequirement && c.satisfiesRequirement.trim() === requirementCode.trim());
+    },
+    isElectiveSatisfied(code) {
+      return code && code.includes('Elective') &&
+        this.courses.some(c => c.satisfiesRequirement && c.satisfiesRequirement.trim() === code.trim());
     }
   },
   mounted() {
